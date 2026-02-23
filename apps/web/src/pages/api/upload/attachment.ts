@@ -1,5 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { Upload } from "@aws-sdk/lib-storage";
+import path from "node:path";
+
+import { toPublicUploadPath } from "@kan/shared/utils";
+import {
+  resolveLocalUploadFilePath,
+  saveRequestBodyToFile,
+} from "@kan/shared/utils/uploadFs";
 
 import { createNextApiContext } from "@kan/api/trpc";
 import { assertPermission } from "@kan/api/utils/permissions";
@@ -7,9 +13,9 @@ import { withRateLimit } from "@kan/api/utils/rateLimit";
 import * as cardRepo from "@kan/db/repository/card.repo";
 import * as cardActivityRepo from "@kan/db/repository/cardActivity.repo";
 import * as cardAttachmentRepo from "@kan/db/repository/cardAttachment.repo";
-import { createS3Client, generateUID } from "@kan/shared/utils";
+import { generateUID } from "@kan/shared/utils";
 
-import { env } from "~/env";
+// (no S3 env needed for local uploads)
 
 // FIXME: Respect the environment variable: NEXT_API_BODY_SIZE_LIMIT
 const MAX_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
@@ -34,10 +40,7 @@ export default withRateLimit(
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      const bucket = env.NEXT_PUBLIC_ATTACHMENTS_BUCKET_NAME;
-      if (!bucket) {
-        return res.status(500).json({ error: "Attachments bucket not configured" });
-      }
+      // Local filesystem storage (no S3 bucket required)
 
       const cardPublicId = req.query.cardPublicId;
       if (typeof cardPublicId !== "string" || cardPublicId.length < 12) {
@@ -86,23 +89,16 @@ export default withRateLimit(
         return res.status(403).json({ error: "Permission denied" });
       }
 
-      const s3Key = `${card.workspaceId}/${cardPublicId}/${generateUID()}-${sanitizedFilename}`;
-
-      const client = createS3Client();
-
-      const upload = new Upload({
-        client,
-        params: {
-          Bucket: bucket,
-          Key: s3Key,
-          Body: req,
-          ContentType: contentType,
-          ContentLength: contentLength,
-        },
-        leavePartsOnError: false,
-      });
-
-      await upload.done();
+      // Store attachments locally under the web public directory
+      // /uploads/attachments/<workspaceId>/<cardPublicId>/<uid>-<filename>
+      const relativeKey = path.posix.join(
+        String(card.workspaceId),
+        cardPublicId,
+        `${generateUID()}-${sanitizedFilename}`,
+      );
+      const outFilePath = resolveLocalUploadFilePath("attachments", relativeKey);
+      await saveRequestBodyToFile(req, outFilePath);
+      const publicPath = toPublicUploadPath("attachments", relativeKey);
 
       // Create attachment record and log activity
       const attachment = await cardAttachmentRepo.create(db, {
@@ -111,7 +107,7 @@ export default withRateLimit(
         originalFilename: originalFilenameHeader,
         contentType,
         size: contentLength,
-        s3Key,
+        s3Key: publicPath,
         createdBy: user.id,
       });
 

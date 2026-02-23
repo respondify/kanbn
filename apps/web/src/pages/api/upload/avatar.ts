@@ -1,12 +1,16 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import path from "node:path";
+
+import { toPublicUploadPath } from "@kan/shared/utils";
+import {
+  resolveLocalUploadFilePath,
+  saveRequestBodyToFile,
+} from "@kan/shared/utils/uploadFs";
 
 import { createNextApiContext } from "@kan/api/trpc";
 import * as userRepo from "@kan/db/repository/user.repo";
 
-import { env } from "~/env";
 import { withRateLimit } from "@kan/api/utils/rateLimit";
-import { createS3Client } from "@kan/shared/utils";
 
 const MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
 const allowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
@@ -31,10 +35,7 @@ export default withRateLimit(
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      const bucket = env.NEXT_PUBLIC_AVATAR_BUCKET_NAME;
-      if (!bucket) {
-        return res.status(500).json({ error: "Avatar bucket not configured" });
-      }
+      // Local filesystem storage (no S3 bucket required)
 
       const contentType = req.headers["content-type"];
       const contentLengthHeader = req.headers["content-length"];
@@ -65,28 +66,22 @@ export default withRateLimit(
         .replace(/[^a-zA-Z0-9._-]/g, "_")
         .substring(0, 200);
 
-      const s3Key = `${user.id}/${sanitizedFilename}`;
+      // Store avatars locally under the web public directory
+      // /uploads/avatars/<userId>/<filename>
+      const relativeKey = path.posix.join(user.id, sanitizedFilename);
+      const outFilePath = resolveLocalUploadFilePath("avatars", relativeKey);
 
-      const client = createS3Client();
+      await saveRequestBodyToFile(req, outFilePath);
 
-      // Upload the file to S3
-      await client.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: s3Key,
-          Body: req,
-          ContentType: contentType,
-          ContentLength: contentLength,
-        }),
-      );
+      const publicPath = toPublicUploadPath("avatars", relativeKey);
 
-      // Update user image in database
+      // Update user image in database (store public URL path)
       const updatedUser = await userRepo.update(db, user.id, {
-        image: s3Key,
+        image: publicPath,
       });
 
       return res.status(200).json({
-        key: s3Key,
+        key: publicPath,
         filename: sanitizedFilename,
         contentType,
         size: contentLength,
