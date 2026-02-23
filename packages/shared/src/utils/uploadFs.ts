@@ -14,8 +14,12 @@ import { stripUploadsPrefix } from "./uploadPaths";
  */
 
 export function getLocalUploadsRoot(): string {
-  // systemd service sets WorkingDirectory to repo root
-  return path.join(process.cwd(), "apps", "web", "public", "uploads");
+  // Resolve uploads directory relative to the repository root, not process.cwd().
+  // This code runs from Next.js API routes where cwd may be apps/web.
+  //
+  // packages/shared/src/utils -> repo root is ../../../..
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../../..");
+  return path.join(repoRoot, "apps", "web", "public", "uploads");
 }
 
 export function resolveLocalUploadFilePath(
