@@ -119,6 +119,50 @@ For the complete Docker Compose configuration, see [docker-compose.yml](./docker
 
 > **Note**: The Docker Compose configuration shown above is a minimal example. For a complete setup with all features (email, OAuth, file uploads, etc.), you'll need to create a `.env` file with the required environment variables. See the Environment Variables section below for the full list of available options.
 
+## Local uploads (no S3)
+
+This fork supports storing avatar and attachment uploads on the local filesystem (instead of S3).
+
+### Where files are stored
+
+Uploads are written under the Next.js public directory so they are reachable at:
+
+- `/uploads/avatars/...`
+- `/uploads/attachments/...`
+
+### Nginx (recommended)
+
+If your app runs behind nginx, serve `/uploads/` directly from disk (bypassing Next.js), otherwise
+middleware/auth may return HTML and Next Image Optimization will reject it.
+
+Example (inside your TLS `server { ... }` block):
+
+```nginx
+location ^~ /uploads/ {
+  alias /var/www/kanbn/uploads/;
+  autoindex off;
+
+  expires 7d;
+  add_header Cache-Control "public";
+}
+```
+
+A secure approach is:
+
+- store uploads in `/var/www/kanbn/uploads`
+- symlink it into the repo at `apps/web/public/uploads`
+
+```bash
+sudo mkdir -p /var/www/kanbn/uploads
+sudo chown -R <app-user>:www-data /var/www/kanbn
+sudo chmod -R 2775 /var/www/kanbn
+
+sudo systemctl stop kanbn
+sudo rm -rf /path/to/repo/apps/web/public/uploads
+sudo ln -s /var/www/kanbn/uploads /path/to/repo/apps/web/public/uploads
+sudo systemctl start kanbn
+```
+
 ## Local Development 🧑‍💻
 
 1. Clone the repository (or fork)
