@@ -1,4 +1,8 @@
-CREATE EXTENSION IF NOT EXISTS pg_trgm; --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS boards_name_trgm_idx ON board USING gin (name gin_trgm_ops);
---> statement-breakpoint
-CREATE INDEX IF NOT EXISTS cards_title_trgm_idx ON card USING gin (title gin_trgm_ops);
+-- NOTE (respondify/kanbn): PGLite does not ship with the pg_trgm extension.
+-- We disable trigram-based fuzzy search indexes for the PGLite (embedded) setup.
+-- If/when we move to a full PostgreSQL server, we can re-enable this migration.
+--
+-- CREATE EXTENSION IF NOT EXISTS pg_trgm; --> statement-breakpoint
+-- CREATE INDEX IF NOT EXISTS boards_name_trgm_idx ON board USING gin (name gin_trgm_ops);
+-- --> statement-breakpoint
+-- CREATE INDEX IF NOT EXISTS cards_title_trgm_idx ON card USING gin (title gin_trgm_ops);
