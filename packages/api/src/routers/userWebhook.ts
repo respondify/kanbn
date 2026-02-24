@@ -149,6 +149,7 @@ export const userWebhookRouter = createTRPCRouter({
           type: z.enum(userWebhookSubscriptionTypes),
           method: z.enum(userWebhookMethods),
           callbackUrlTemplate: z.string(),
+          bodyJsonTemplate: z.string().nullable(),
           enabled: z.boolean(),
           credentialPublicId: z.string().nullable(),
           createdAt: z.date(),
@@ -166,6 +167,7 @@ export const userWebhookRouter = createTRPCRouter({
         type: s.type,
         method: s.method,
         callbackUrlTemplate: s.callbackUrlTemplate,
+        bodyJsonTemplate: s.bodyJsonTemplate ?? null,
         enabled: s.enabled,
         credentialPublicId: s.credential?.publicId ?? null,
         createdAt: s.createdAt,
@@ -187,6 +189,7 @@ export const userWebhookRouter = createTRPCRouter({
         type: z.enum(userWebhookSubscriptionTypes),
         method: z.enum(userWebhookMethods).default("POST"),
         callbackUrlTemplate: z.string().min(1).max(2048),
+        bodyJsonTemplate: z.string().max(20000).nullable().optional(),
         credentialPublicId: z.string().min(12).nullable().optional(),
       }),
     )
@@ -223,6 +226,7 @@ export const userWebhookRouter = createTRPCRouter({
         type: input.type,
         method: input.method,
         callbackUrlTemplate: input.callbackUrlTemplate,
+        bodyJsonTemplate: input.bodyJsonTemplate ?? null,
         credentialId,
       });
 
@@ -237,6 +241,7 @@ export const userWebhookRouter = createTRPCRouter({
         type: sub.type,
         method: sub.method,
         callbackUrlTemplate: sub.callbackUrlTemplate,
+        bodyJsonTemplate: sub.bodyJsonTemplate ?? null,
         enabled: sub.enabled,
         credentialPublicId: input.credentialPublicId ?? null,
         createdAt: sub.createdAt,

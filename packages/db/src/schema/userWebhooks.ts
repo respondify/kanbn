@@ -85,6 +85,10 @@ export const userWebhookSubscriptions = pgTable(
       length: 2048,
     }).notNull(),
 
+    // Optional raw JSON template for POST bodies.
+    // If present, it must be valid JSON after placeholder substitution.
+    bodyJsonTemplate: text("bodyJsonTemplate"),
+
     credentialId: bigint("credentialId", { mode: "number" }).references(
       () => userWebhookCredentials.id,
       { onDelete: "set null" },

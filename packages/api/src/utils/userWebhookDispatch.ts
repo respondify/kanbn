@@ -58,10 +58,21 @@ export async function dispatchUserWebhooks(args: {
               });
             } else {
               headers["Content-Type"] = "application/json";
+
+              const bodyTemplate = (sub as any).bodyJsonTemplate as string | null | undefined;
+              const bodyString = bodyTemplate
+                ? expandTemplate(bodyTemplate, variables)
+                : JSON.stringify(payload ?? variables);
+
+              // Ensure template output is valid JSON before sending.
+              if (bodyTemplate) {
+                JSON.parse(bodyString);
+              }
+
               await fetch(url, {
                 method: "POST",
                 headers,
-                body: JSON.stringify(payload ?? variables),
+                body: bodyString,
                 signal: ctrl.signal,
               });
             }

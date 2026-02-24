@@ -30,6 +30,7 @@ export const create = async (
     type: UserWebhookSubscriptionType;
     method: "GET" | "POST";
     callbackUrlTemplate: string;
+    bodyJsonTemplate: string | null;
     credentialId: number | null;
   },
 ) => {
@@ -41,6 +42,7 @@ export const create = async (
       type: args.type,
       method: args.method,
       callbackUrlTemplate: args.callbackUrlTemplate,
+      bodyJsonTemplate: args.bodyJsonTemplate,
       credentialId: args.credentialId,
       enabled: true,
       createdAt: new Date(),
