@@ -88,6 +88,12 @@ export const userWebhookRouter = createTRPCRouter({
         headerName: input.headerName,
       });
 
+      if (!cred)
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create credential",
+        });
+
       return {
         publicId: cred.publicId,
         name: cred.name,
@@ -219,6 +225,12 @@ export const userWebhookRouter = createTRPCRouter({
         callbackUrlTemplate: input.callbackUrlTemplate,
         credentialId,
       });
+
+      if (!sub)
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create subscription",
+        });
 
       return {
         publicId: sub.publicId,

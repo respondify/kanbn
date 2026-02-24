@@ -35,7 +35,7 @@ export function validateCallbackUrlTemplate(args: {
 
   const allowedPlaceholders = PLACEHOLDERS_BY_TYPE[type] ?? [];
 
-  const placeholderMatches = template.match(/\{[a-zA-Z0-9_]+\}/g) ?? [];
+  const placeholderMatches = (template.match(/\{[a-zA-Z0-9_]+\}/g) ?? []) as string[];
   const unique = Array.from(new Set(placeholderMatches));
 
   if (unique.length !== 1) {
@@ -46,7 +46,7 @@ export function validateCallbackUrlTemplate(args: {
     });
   }
 
-  const placeholder = unique[0];
+  const placeholder = unique[0]!;
   if (!allowedPlaceholders.includes(placeholder)) {
     throw new TRPCError({
       code: "BAD_REQUEST",
