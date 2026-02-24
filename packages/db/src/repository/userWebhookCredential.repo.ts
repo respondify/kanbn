@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 import type { dbClient } from "@kan/db/client";
 import { userWebhookCredentials } from "@kan/db/schema";
@@ -10,7 +10,7 @@ export const listByUserId = async (db: dbClient, userId: string) => {
       eq(userWebhookCredentials.userId, userId),
       isNull(userWebhookCredentials.deletedAt),
     ),
-    orderBy: (t, { desc }) => desc(t.createdAt),
+    orderBy: desc(userWebhookCredentials.createdAt),
   });
 };
 

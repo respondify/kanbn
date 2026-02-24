@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
 import type { dbClient } from "@kan/db/client";
 import {
@@ -19,7 +19,7 @@ export const listByUserId = async (db: dbClient, userId: string) => {
         columns: { publicId: true, name: true, headerName: true },
       },
     },
-    orderBy: (t, { desc }) => desc(t.createdAt),
+    orderBy: desc(userWebhookSubscriptions.createdAt),
   });
 };
 
@@ -87,17 +87,16 @@ export const listActiveByUserIdAndType = async (
   args: { userId: string; type: UserWebhookSubscriptionType },
 ) => {
   return db.query.userWebhookSubscriptions.findMany({
-    where: (t, { and, eq, isNull }) =>
-      and(
-        eq(t.userId, args.userId),
-        eq(t.type, args.type),
-        eq(t.enabled, true),
-        isNull(t.deletedAt),
-      ),
+    where: and(
+      eq(userWebhookSubscriptions.userId, args.userId),
+      eq(userWebhookSubscriptions.type, args.type),
+      eq(userWebhookSubscriptions.enabled, true),
+      isNull(userWebhookSubscriptions.deletedAt),
+    ),
     with: {
       credential: true,
     },
-    orderBy: (t, { asc }) => asc(t.createdAt),
+    orderBy: asc(userWebhookSubscriptions.createdAt),
   });
 };
 
