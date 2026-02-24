@@ -1,4 +1,4 @@
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+// (S3 upload not used in local-files storage mode)
 import { ChatOrPushProviderEnum } from "@novu/api/models/components";
 import { createAuthMiddleware } from "better-auth/api";
 import { env } from "next-runtime-env";
@@ -7,9 +7,10 @@ import type { dbClient } from "@kan/db/client";
 import * as memberRepo from "@kan/db/repository/member.repo";
 import * as userRepo from "@kan/db/repository/user.repo";
 import { notificationClient } from "@kan/email";
-import { createEmailUnsubscribeLink, createS3Client } from "@kan/shared";
+import { createEmailUnsubscribeLink } from "@kan/shared";
+import { generateAvatarUrl } from "@kan/shared/utils";
 
-import { downloadImage } from "./utils";
+// downloadImage unused in local-files storage mode
 
 type BetterAuthUser = {
   id: string;
@@ -53,43 +54,10 @@ export function createDatabaseHooks(db: dbClient) {
           return Promise.resolve(true);
         },
         async after(user: BetterAuthUser, _context: unknown) {
-          let avatarKey = user.image;
-          const storageDomain = process.env.NEXT_PUBLIC_STORAGE_DOMAIN;
-          if (
-            user.image &&
-            storageDomain &&
-            !user.image.includes(storageDomain)
-          ) {
-            try {
-              const client = createS3Client();
-
-              const allowedFileExtensions = ["jpg", "jpeg", "png", "webp"];
-
-              const fileExtension =
-                user.image.split(".").pop()?.split("?")[0] ?? "jpg";
-              const key = `${user.id}/avatar.${!allowedFileExtensions.includes(fileExtension) ? "jpg" : fileExtension}`;
-
-              const imageBuffer = await downloadImage(user.image);
-
-              await client.send(
-                new PutObjectCommand({
-                  Bucket: env("NEXT_PUBLIC_AVATAR_BUCKET_NAME") ?? "",
-                  Key: key,
-                  Body: imageBuffer,
-                  ContentType: `image/${!allowedFileExtensions.includes(fileExtension) ? "jpeg" : fileExtension}`,
-                  ACL: "public-read",
-                }),
-              );
-
-              avatarKey = key;
-
-              await userRepo.update(db, user.id, {
-                image: key,
-              });
-            } catch (error) {
-              console.error(error);
-            }
-          }
+          // If upstream providers supply a remote avatar URL, Kan's default behaviour
+          // is to sync it into S3. In our local-files setup we skip that sync.
+          // Avatar uploads are handled by /api/upload/avatar and stored under /uploads/avatars.
+          const avatarKey = user.image;
 
           if (notificationClient) {
             try {
@@ -98,7 +66,7 @@ export function createDatabaseHooks(db: dbClient) {
                 .filter(Boolean);
               const lastName = rest.length ? rest.join(" ") : undefined;
               const avatarUrl = avatarKey
-                ? `${env("NEXT_PUBLIC_STORAGE_URL")}/${env("NEXT_PUBLIC_AVATAR_BUCKET_NAME")}/${avatarKey}`
+                ? await generateAvatarUrl(avatarKey)
                 : undefined;
 
               const unsubscribeUrl = await createEmailUnsubscribeLink(user.id);

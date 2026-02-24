@@ -9,7 +9,14 @@ import { generateUID } from "@kan/shared/utils";
 
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { assertPermission } from "../utils/permissions";
-import { deleteObject, generateUploadUrl } from "@kan/shared/utils";
+import {
+  isLocalUploadPath,
+  tryParseLocalUploadKind,
+  toPublicUploadPath,
+  deleteObject,
+  generateUploadUrl,
+} from "@kan/shared/utils";
+import { deleteLocalUpload } from "@kan/shared/utils/uploadFs";
 
 export const attachmentRouter = createTRPCRouter({
   generateUploadUrl: protectedProcedure
@@ -66,16 +73,22 @@ export const attachmentRouter = createTRPCRouter({
         });
 
       const bucket = process.env.NEXT_PUBLIC_ATTACHMENTS_BUCKET_NAME;
-      if (!bucket)
-        throw new TRPCError({
-          message: `Attachments bucket not configured`,
-          code: "INTERNAL_SERVER_ERROR",
-        });
+      // If S3 isn't configured, fall back to the local upload endpoint.
+      // (The client can POST raw bytes to this URL.)
 
       // Sanitize filename
       const sanitizedFilename = input.filename
         .replace(/[^a-zA-Z0-9._-]/g, "_")
         .substring(0, 200);
+
+      if (!bucket) {
+        // Local filesystem mode
+        const relativeKey = `${workspace.publicId}/${input.cardPublicId}/${generateUID()}-${sanitizedFilename}`;
+        const publicPath = toPublicUploadPath("attachments", relativeKey);
+        const base = process.env.NEXT_PUBLIC_BASE_URL ?? "";
+        const url = `${base}/api/upload/attachment?cardPublicId=${encodeURIComponent(input.cardPublicId)}`;
+        return { url, key: publicPath };
+      }
 
       const s3Key = `${workspace.publicId}/${input.cardPublicId}/${generateUID()}-${sanitizedFilename}`;
 
@@ -196,15 +209,18 @@ export const attachmentRouter = createTRPCRouter({
       await assertPermission(ctx.db, userId, workspaceId, "card:edit");
 
       const bucket = process.env.NEXT_PUBLIC_ATTACHMENTS_BUCKET_NAME;
-      if (bucket) {
-        try {
+
+      try {
+        if (isLocalUploadPath(attachment.s3Key)) {
+          const kind = tryParseLocalUploadKind(attachment.s3Key);
+          if (kind) {
+            await deleteLocalUpload(kind, attachment.s3Key);
+          }
+        } else if (bucket) {
           await deleteObject(bucket, attachment.s3Key);
-        } catch (error) {
-          console.error(
-            `Failed to delete attachment from S3: ${attachment.s3Key}`,
-            error,
-          );
         }
+      } catch (error) {
+        console.error(`Failed to delete attachment: ${attachment.s3Key}`, error);
       }
 
       await cardAttachmentRepo.softDelete(ctx.db, {

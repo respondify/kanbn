@@ -12,6 +12,14 @@
       "types": "./dist/utils/index.d.ts",
       "default": "./src/utils/index.ts"
     },
+    "./utils/uploadFs": {
+      "types": "./dist/utils/uploadFs.d.ts",
+      "default": "./src/utils/uploadFs.ts"
+    },
+    "./utils/uploadPaths": {
+      "types": "./dist/utils/uploadPaths.d.ts",
+      "default": "./src/utils/uploadPaths.ts"
+    },
     "./constants": {
       "types": "./dist/constants/index.d.ts",
       "default": "./src/constants/index.ts"

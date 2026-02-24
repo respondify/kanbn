@@ -7,6 +7,8 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "next-runtime-env";
 
+import { isLocalUploadPath } from "./uploadPaths";
+
 export function createS3Client() {
   const credentials =
     process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY
@@ -87,6 +89,13 @@ export async function generateAvatarUrl(
     return imageKey;
   }
 
+  // Local storage: the DB may store a public URL path (e.g. /uploads/avatars/..)
+  if (isLocalUploadPath(imageKey)) {
+    const base = env("NEXT_PUBLIC_BASE_URL");
+    const pathKey = imageKey.startsWith("/") ? imageKey : `/${imageKey}`;
+    return base ? `${base}${pathKey}` : pathKey;
+  }
+
   const bucket = env("NEXT_PUBLIC_AVATAR_BUCKET_NAME");
   if (!bucket) {
     return null;
@@ -110,6 +119,15 @@ export async function generateAttachmentUrl(
 ): Promise<string | null> {
   if (!attachmentKey) {
     return null;
+  }
+
+  // Local storage: DB may store a public URL path under /uploads/attachments/..
+  if (isLocalUploadPath(attachmentKey)) {
+    const base = env("NEXT_PUBLIC_BASE_URL");
+    const pathKey = attachmentKey.startsWith("/")
+      ? attachmentKey
+      : `/${attachmentKey}`;
+    return base ? `${base}${pathKey}` : pathKey;
   }
 
   const bucket = env("NEXT_PUBLIC_ATTACHMENTS_BUCKET_NAME");
