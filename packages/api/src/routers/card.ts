@@ -7,12 +7,23 @@ import * as cardCommentRepo from "@kan/db/repository/cardComment.repo";
 import * as labelRepo from "@kan/db/repository/label.repo";
 import * as listRepo from "@kan/db/repository/list.repo";
 import * as workspaceRepo from "@kan/db/repository/workspace.repo";
+import * as memberRepo from "@kan/db/repository/member.repo";
 
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { mergeActivities } from "../utils/activities";
 import { sendMentionEmails } from "../utils/notifications";
+import { dispatchUserWebhooks } from "../utils/userWebhookDispatch";
 import { assertCanDelete, assertCanEdit, assertPermission } from "../utils/permissions";
 import { generateAttachmentUrl, generateAvatarUrl } from "@kan/shared/utils";
+
+async function getCardAssigneeUserIds(db: any, cardPublicId: string): Promise<string[]> {
+  const full = await cardRepo.getWithListAndMembersByPublicId(db, cardPublicId);
+  const userIds =
+    full?.members
+      ?.map((m: any) => m.member?.user?.id)
+      .filter(Boolean) ?? [];
+  return Array.from(new Set(userIds));
+}
 
 export const cardRouter = createTRPCRouter({
   create: protectedProcedure
@@ -152,6 +163,22 @@ export const cardRouter = createTRPCRouter({
         }));
 
         await cardActivityRepo.bulkCreate(ctx.db, cardActivitesInsert);
+
+        // Webhook subscriptions: initial assignees get an "assigned" event.
+        const assigneeUserIds = await getCardAssigneeUserIds(
+          ctx.db,
+          newCard.publicId,
+        );
+        await dispatchUserWebhooks({
+          db: ctx.db,
+          userIds: assigneeUserIds,
+          type: "assigned",
+          variables: { cardPublicId: newCard.publicId },
+          payload: {
+            type: "assigned",
+            cardPublicId: newCard.publicId,
+          },
+        });
       }
 
       if (input.description) {
@@ -225,6 +252,20 @@ export const cardRouter = createTRPCRouter({
         commentId: newComment.id,
         toComment: newComment.comment,
         createdBy: userId,
+      });
+
+      // Webhook subscriptions: notify all assignees that an associated card changed.
+      await dispatchUserWebhooks({
+        db: ctx.db,
+        userIds: await getCardAssigneeUserIds(ctx.db, input.cardPublicId),
+        type: "associated_card_changes",
+        variables: { cardPublicId: input.cardPublicId },
+        payload: {
+          type: "associated_card_changes",
+          cardPublicId: input.cardPublicId,
+          change: "comment.added",
+          commentPublicId: newComment.publicId,
+        },
       });
 
       sendMentionEmails({
@@ -317,6 +358,19 @@ export const cardRouter = createTRPCRouter({
         createdBy: userId,
       });
 
+      await dispatchUserWebhooks({
+        db: ctx.db,
+        userIds: await getCardAssigneeUserIds(ctx.db, input.cardPublicId),
+        type: "associated_card_changes",
+        variables: { cardPublicId: input.cardPublicId },
+        payload: {
+          type: "associated_card_changes",
+          cardPublicId: input.cardPublicId,
+          change: "comment.updated",
+          commentPublicId: updatedComment.publicId,
+        },
+      });
+
       sendMentionEmails({
         db: ctx.db,
         cardPublicId: input.cardPublicId,
@@ -404,6 +458,19 @@ export const cardRouter = createTRPCRouter({
         createdBy: userId,
       });
 
+      await dispatchUserWebhooks({
+        db: ctx.db,
+        userIds: await getCardAssigneeUserIds(ctx.db, input.cardPublicId),
+        type: "associated_card_changes",
+        variables: { cardPublicId: input.cardPublicId },
+        payload: {
+          type: "associated_card_changes",
+          cardPublicId: input.cardPublicId,
+          change: "comment.deleted",
+          commentPublicId: existingComment.publicId,
+        },
+      });
+
       return deletedComment;
     }),
   addOrRemoveLabel: protectedProcedure
@@ -478,6 +545,19 @@ export const cardRouter = createTRPCRouter({
           createdBy: userId,
         });
 
+        await dispatchUserWebhooks({
+          db: ctx.db,
+          userIds: await getCardAssigneeUserIds(ctx.db, input.cardPublicId),
+          type: "associated_card_changes",
+          variables: { cardPublicId: input.cardPublicId },
+          payload: {
+            type: "associated_card_changes",
+            cardPublicId: input.cardPublicId,
+            change: "label.removed",
+            labelPublicId: input.labelPublicId,
+          },
+        });
+
         return { newLabel: false };
       }
 
@@ -495,6 +575,19 @@ export const cardRouter = createTRPCRouter({
         cardId: card.id,
         labelId: label.id,
         createdBy: userId,
+      });
+
+      await dispatchUserWebhooks({
+        db: ctx.db,
+        userIds: await getCardAssigneeUserIds(ctx.db, input.cardPublicId),
+        type: "associated_card_changes",
+        variables: { cardPublicId: input.cardPublicId },
+        payload: {
+          type: "associated_card_changes",
+          cardPublicId: input.cardPublicId,
+          change: "label.added",
+          labelPublicId: input.labelPublicId,
+        },
       });
 
       return { newLabel: true };
@@ -538,7 +631,7 @@ export const cardRouter = createTRPCRouter({
 
       await assertPermission(ctx.db, userId, card.workspaceId, "card:edit");
 
-      const member = await workspaceRepo.getMemberByPublicId(
+      const member = await memberRepo.getByPublicId(
         ctx.db,
         input.workspaceMemberPublicId,
       );
@@ -576,6 +669,20 @@ export const cardRouter = createTRPCRouter({
           createdBy: userId,
         });
 
+        // Webhook subscriptions: notify the removed member.
+        if (member.userId) {
+          await dispatchUserWebhooks({
+            db: ctx.db,
+            userIds: [member.userId],
+            type: "unassigned",
+            variables: { cardPublicId: input.cardPublicId },
+            payload: {
+              type: "unassigned",
+              cardPublicId: input.cardPublicId,
+            },
+          });
+        }
+
         return { newMember: false };
       }
 
@@ -594,6 +701,20 @@ export const cardRouter = createTRPCRouter({
         workspaceMemberId: member.id,
         createdBy: userId,
       });
+
+      // Webhook subscriptions: notify the newly assigned member.
+      if (member.userId) {
+        await dispatchUserWebhooks({
+          db: ctx.db,
+          userIds: [member.userId],
+          type: "assigned",
+          variables: { cardPublicId: input.cardPublicId },
+          payload: {
+            type: "assigned",
+            cardPublicId: input.cardPublicId,
+          },
+        });
+      }
 
       return { newMember: true };
     }),
@@ -1005,6 +1126,18 @@ export const cardRouter = createTRPCRouter({
 
       if (activities.length > 0) {
         await cardActivityRepo.bulkCreate(ctx.db, activities);
+
+        await dispatchUserWebhooks({
+          db: ctx.db,
+          userIds: await getCardAssigneeUserIds(ctx.db, input.cardPublicId),
+          type: "associated_card_changes",
+          variables: { cardPublicId: input.cardPublicId },
+          payload: {
+            type: "associated_card_changes",
+            cardPublicId: input.cardPublicId,
+            activityTypes: activities.map((a: any) => a.type),
+          },
+        });
       }
 
       return result;

@@ -12,6 +12,7 @@ import { memberRouter } from "./routers/member";
 import { permissionRouter } from "./routers/permission";
 import { userRouter } from "./routers/user";
 import { workspaceRouter } from "./routers/workspace";
+import { userWebhookRouter } from "./routers/userWebhook";
 import { createTRPCRouter } from "./trpc";
 
 export const appRouter = createTRPCRouter({
@@ -29,6 +30,7 @@ export const appRouter = createTRPCRouter({
   user: userRouter,
   workspace: workspaceRouter,
   integration: integrationRouter,
+  userWebhook: userWebhookRouter,
 });
 
 export type AppRouter = typeof appRouter;
